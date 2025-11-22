@@ -1,0 +1,41 @@
+name: attendance_app
+description: Ứng dụng quản lý điểm danh
+version: 1.0.0+1
+
+environment:
+  sdk: '>=3.0.0 <4.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+  
+  # Database - KẾT NỐI TRỰC TIẾP PostgreSQL
+  postgres: ^2.6.2
+  
+  # State Management
+  provider: ^6.1.1
+  
+  # Storage
+  shared_preferences: ^2.2.2
+  
+  # QR Code
+  qr_flutter: ^4.1.0
+  mobile_scanner: ^3.5.5
+  
+  # Location
+  geolocator: ^10.1.0
+  
+  # Excel
+  excel: ^4.0.2
+  file_picker: ^6.1.1
+  
+  # Utils
+  intl: ^0.18.1
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^3.0.1
+
+flutter:
+  uses-material-design: true
