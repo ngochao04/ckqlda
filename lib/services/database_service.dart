@@ -4,8 +4,11 @@ import 'package:postgres/postgres.dart';
 class DatabaseService {
   static PostgreSQLConnection? _connection;
   
-  // CẤU HÌNH DATABASE - THAY ĐỔI THEO MÁY BẠN
-  static const String host = 'localhost'; // hoặc IP máy của bạn
+  // ⚠️ THAY ĐỔI HOST CHO ANDROID EMULATOR
+  static const String host = '10.0.2.2';  // ✅ Dùng cho Android Emulator
+  // static const String host = 'localhost';  // ❌ Không dùng cho emulator
+  // static const String host = '192.168.1.X';  // ✅ Dùng cho thiết bị thật (thay X)
+  
   static const int port = 5432;
   static const String database = 'attendance_management';
   static const String username = 'postgres';
@@ -14,6 +17,11 @@ class DatabaseService {
   // Kết nối database
   static Future<PostgreSQLConnection> getConnection() async {
     if (_connection == null || _connection!.isClosed) {
+      print('🔌 Đang kết nối database...');
+      print('   Host: $host');
+      print('   Port: $port');
+      print('   Database: $database');
+      
       _connection = PostgreSQLConnection(
         host,
         port,
@@ -22,8 +30,15 @@ class DatabaseService {
         password: password,
         useSSL: false,
       );
-      await _connection!.open();
-      print('✅ Database connected successfully!');
+      
+      try {
+        await _connection!.open();
+        print('✅ Database connected successfully!');
+      } catch (e) {
+        print('❌ Lỗi kết nối database:');
+        print('   $e');
+        rethrow;
+      }
     }
     return _connection!;
   }

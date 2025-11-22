@@ -4,6 +4,8 @@ import '../services/database_service.dart';
 import 'create_class_screen.dart';
 import 'class_detail_screen.dart';
 import 'login_screen.dart';
+import 'profile_screen.dart';
+import 'class_stats_screen.dart';
 
 class TeacherHomeScreen extends StatefulWidget {
   const TeacherHomeScreen({Key? key}) : super(key: key);
@@ -68,6 +70,15 @@ class _TeacherHomeScreenState extends State<TeacherHomeScreen> {
       appBar: AppBar(
         title: const Text('Lớp của tôi'),
         actions: [
+          IconButton(
+            icon: const Icon(Icons.person),
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const ProfileScreen()),
+              );
+            },
+          ),
           IconButton(
             icon: const Icon(Icons.logout),
             onPressed: _logout,
