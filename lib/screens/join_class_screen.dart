@@ -1,3 +1,4 @@
+// lib/screens/join_class_screen.dart
 import 'package:flutter/material.dart';
 import '../services/database_service.dart';
 
@@ -14,12 +15,25 @@ class _JoinClassScreenState extends State<JoinClassScreen> {
   final _classCodeController = TextEditingController();
   bool _isLoading = false;
 
+  @override
+  void dispose() {
+    _classCodeController.dispose();
+    super.dispose();
+  }
+
   Future<void> _joinClass() async {
-    final classCode = _classCodeController.text.trim();
+    final classCode = _classCodeController.text.trim().toUpperCase();
     
     if (classCode.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Vui lòng nhập mã lớp')),
+      );
+      return;
+    }
+
+    if (classCode.length != 8) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Mã lớp phải có 8 ký tự')),
       );
       return;
     }
@@ -37,14 +51,20 @@ class _JoinClassScreenState extends State<JoinClassScreen> {
           backgroundColor: Colors.green,
         ),
       );
-      Navigator.pop(context);
+      Navigator.pop(context, true); // Return true để refresh
     } catch (e) {
       if (!mounted) return;
+      
+      String errorMessage = 'Lỗi: ${e.toString()}';
+      if (e.toString().contains('Không tìm thấy')) {
+        errorMessage = 'Mã lớp không tồn tại';
+      } else if (e.toString().contains('đã tham gia')) {
+        errorMessage = 'Bạn đã tham gia lớp này rồi';
+      }
+      
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(e.toString().contains('Không tìm thấy') 
-              ? 'Mã lớp không tồn tại' 
-              : 'Lỗi: ${e.toString()}'),
+          content: Text(errorMessage),
           backgroundColor: Colors.red,
         ),
       );
@@ -94,9 +114,24 @@ class _JoinClassScreenState extends State<JoinClassScreen> {
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(12),
                 ),
+                counterText: '',
               ),
               textCapitalization: TextCapitalization.characters,
               maxLength: 8,
+              style: const TextStyle(
+                letterSpacing: 2,
+                fontWeight: FontWeight.bold,
+              ),
+              onChanged: (value) {
+                // Auto uppercase
+                final upperValue = value.toUpperCase();
+                if (value != upperValue) {
+                  _classCodeController.value = _classCodeController.value.copyWith(
+                    text: upperValue,
+                    selection: TextSelection.collapsed(offset: upperValue.length),
+                  );
+                }
+              },
             ),
             const SizedBox(height: 24),
             
@@ -130,7 +165,7 @@ class _JoinClassScreenState extends State<JoinClassScreen> {
                   const SizedBox(width: 12),
                   Expanded(
                     child: Text(
-                      'Mã lớp được giảng viên cung cấp khi tạo lớp điểm danh',
+                      'Mã lớp được giảng viên cung cấp khi tạo lớp điểm danh. Bạn có thể tìm thấy mã lớp trong thông báo hoặc hỏi giảng viên.',
                       style: TextStyle(
                         fontSize: 12,
                         color: Colors.blue.shade900,

@@ -1,3 +1,4 @@
+// lib/screens/student_class_detail.dart
 import 'package:flutter/material.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
 import '../services/database_service.dart';
@@ -28,6 +29,12 @@ class _StudentClassDetailScreenState extends State<StudentClassDetailScreen> wit
     _loadAttendanceHistory();
   }
 
+  @override
+  void dispose() {
+    _tabController.dispose();
+    super.dispose();
+  }
+
   Future<void> _loadAttendanceHistory() async {
     setState(() => _isLoading = true);
     try {
@@ -40,6 +47,7 @@ class _StudentClassDetailScreenState extends State<StudentClassDetailScreen> wit
         _isLoading = false;
       });
     } catch (e) {
+      print('Error loading attendance history: $e');
       setState(() => _isLoading = false);
     }
   }
@@ -79,6 +87,15 @@ class _StudentClassDetailScreenState extends State<StudentClassDetailScreen> wit
     }
   }
 
+  // Helper function to safely convert to int
+  int _toInt(dynamic value) {
+    if (value == null) return 0;
+    if (value is int) return value;
+    if (value is BigInt) return value.toInt();
+    if (value is double) return value.toInt();
+    return int.tryParse(value.toString()) ?? 0;
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -108,8 +125,12 @@ class _StudentClassDetailScreenState extends State<StudentClassDetailScreen> wit
   }
 
   Widget _buildInfoTab() {
-    final attendanceRate = widget.classData['total_sessions_held'] > 0
-        ? (widget.classData['attended_sessions'] / widget.classData['total_sessions_held'] * 100)
+    // Safe parsing với helper function
+    final totalSessionsHeld = _toInt(widget.classData['total_sessions_held']);
+    final attendedSessions = _toInt(widget.classData['attended_sessions']);
+    
+    final attendanceRate = totalSessionsHeld > 0
+        ? (attendedSessions / totalSessionsHeld * 100)
         : 0.0;
 
     return ListView(
@@ -150,12 +171,12 @@ class _StudentClassDetailScreenState extends State<StudentClassDetailScreen> wit
         _InfoRow(
           icon: Icons.person,
           label: 'Giảng viên',
-          value: widget.classData['teacher_name'],
+          value: widget.classData['teacher_name'] ?? 'N/A',
         ),
         _InfoRow(
           icon: Icons.book,
           label: 'Môn học',
-          value: widget.classData['subject_name'],
+          value: widget.classData['subject_name'] ?? 'N/A',
         ),
         _InfoRow(
           icon: Icons.calendar_month,
@@ -170,12 +191,12 @@ class _StudentClassDetailScreenState extends State<StudentClassDetailScreen> wit
         _InfoRow(
           icon: Icons.check_circle,
           label: 'Có mặt',
-          value: '${widget.classData['attended_sessions']} buổi',
+          value: '$attendedSessions buổi',
         ),
         _InfoRow(
           icon: Icons.event_note,
-          label: 'Tổng buổi',
-          value: '${widget.classData['total_sessions_held']} buổi',
+          label: 'Tổng buổi đã học',
+          value: '$totalSessionsHeld buổi',
         ),
       ],
     );
@@ -234,7 +255,7 @@ class _StudentClassDetailScreenState extends State<StudentClassDetailScreen> wit
                 backgroundColor: statusColor.withOpacity(0.1),
                 child: Icon(statusIcon, color: statusColor),
               ),
-              title: Text('Buổi ${record['session_number']}'),
+              title: Text('Buổi ${_toInt(record['session_number'])}'),
               subtitle: Text(
                 '${date.day}/${date.month}/${date.year} - ${record['session_time']}\n'
                 'Phòng: ${record['room'] ?? 'N/A'}',

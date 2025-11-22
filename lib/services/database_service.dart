@@ -60,7 +60,8 @@ class DatabaseService {
       final conn = await getConnection();
       
       final results = await conn.query(
-        'SELECT u.*, t.teacher_code, t.department, s.student_code, s.class_name, s.academic_year '
+        'SELECT u.*, t.id as teacher_id, t.teacher_code, t.department, '
+        's.id as student_id, s.student_code, s.class_name as student_class, s.academic_year '
         'FROM users u '
         'LEFT JOIN teachers t ON u.id = t.user_id '
         'LEFT JOIN students s ON u.id = s.user_id '
@@ -85,11 +86,13 @@ class DatabaseService {
         'is_active': row[7],
         'created_at': row[8],
         'updated_at': row[9],
-        'teacher_code': row[10],
-        'department': row[11],
-        'student_code': row[12],
-        'class_name': row[13],
-        'academic_year': row[14],
+        'teacher_id': row[10],
+        'teacher_code': row[11],
+        'department': row[12],
+        'student_id': row[13],
+        'student_code': row[14],
+        'student_class': row[15],
+        'academic_year': row[16],
       };
     } catch (e) {
       print('Login error: $e');
@@ -97,13 +100,48 @@ class DatabaseService {
     }
   }
 
-  // Đổi mật khẩu
-  static Future<void> changePassword(int userId, String newPassword) async {
+  // Đổi mật khẩu (FIX)
+  static Future<void> changePassword(int userId, String oldPassword, String newPassword) async {
     final conn = await getConnection();
+    
+    // Verify old password
+    final check = await conn.query(
+      'SELECT id FROM users WHERE id = @id AND password = @oldpwd',
+      substitutionValues: {
+        'id': userId,
+        'oldpwd': oldPassword,
+      },
+    );
+    
+    if (check.isEmpty) {
+      throw Exception('Mật khẩu cũ không đúng');
+    }
+    
+    // Update password
     await conn.query(
       'UPDATE users SET password = @password, updated_at = NOW() WHERE id = @id',
       substitutionValues: {
         'password': newPassword,
+        'id': userId,
+      },
+    );
+  }
+
+  // Cập nhật profile
+  static Future<void> updateProfile({
+    required int userId,
+    required String fullName,
+    String? phone,
+    String? avatarUrl,
+  }) async {
+    final conn = await getConnection();
+    await conn.query(
+      'UPDATE users SET full_name = @name, phone = @phone, '
+      'avatar_url = @avatar, updated_at = NOW() WHERE id = @id',
+      substitutionValues: {
+        'name': fullName,
+        'phone': phone,
+        'avatar': avatarUrl,
         'id': userId,
       },
     );
@@ -161,6 +199,45 @@ class DatabaseService {
     ]);
   }
 
+  // Cập nhật lớp (NEW)
+  static Future<void> updateClass({
+    required int classId,
+    required String className,
+    required String subjectName,
+    required int totalSessions,
+    String? semester,
+    String? academicYear,
+    String? schedule,
+    int? maxStudents,
+    String? description,
+    DateTime? startDate,
+    DateTime? endDate,
+  }) async {
+    final conn = await getConnection();
+    
+    await conn.query(
+      'UPDATE attendance_classes SET '
+      'class_name = @name, subject_name = @subject, semester = @semester, '
+      'academic_year = @year, total_sessions = @sessions, schedule = @schedule, '
+      'max_students = @max, description = @desc, start_date = @start, '
+      'end_date = @end, updated_at = NOW() '
+      'WHERE id = @id',
+      substitutionValues: {
+        'name': className,
+        'subject': subjectName,
+        'semester': semester,
+        'year': academicYear,
+        'sessions': totalSessions,
+        'schedule': schedule,
+        'max': maxStudents,
+        'desc': description,
+        'start': startDate,
+        'end': endDate,
+        'id': classId,
+      },
+    );
+  }
+
   // Lấy danh sách lớp của giảng viên
   static Future<List<Map<String, dynamic>>> getTeacherClasses(int teacherId) async {
     final conn = await getConnection();
@@ -188,22 +265,22 @@ class DatabaseService {
     }).toList();
   }
 
-  // Lấy lớp sinh viên đã tham gia
+  // Lấy lớp sinh viên đã tham gia (FIX)
   static Future<List<Map<String, dynamic>>> getStudentClasses(int studentId) async {
     final conn = await getConnection();
     
     final results = await conn.query(
-      'SELECT ac.*, u.full_name as teacher_name, '
-      'COUNT(DISTINCT s.id) as total_sessions_held, '
-      'COUNT(DISTINCT CASE WHEN a.status = \'present\' THEN a.id END) as attended_sessions '
+      'SELECT ac.*, u.full_name as teacher_name, cs.enrolled_at, '
+      'COUNT(DISTINCT s.id) FILTER (WHERE s.is_completed = true) as total_sessions_held, '
+      'COUNT(DISTINCT a.id) FILTER (WHERE a.status = \'present\') as attended_sessions '
       'FROM class_students cs '
       'JOIN attendance_classes ac ON cs.class_id = ac.id '
       'JOIN teachers t ON ac.teacher_id = t.id '
       'JOIN users u ON t.user_id = u.id '
       'LEFT JOIN sessions s ON ac.id = s.class_id '
-      'LEFT JOIN attendances a ON s.id = a.session_id AND a.student_id = cs.student_id '
+      'LEFT JOIN attendances a ON s.id = a.session_id AND a.student_id = @student '
       'WHERE cs.student_id = @student AND ac.is_active = true '
-      'GROUP BY ac.id, u.full_name '
+      'GROUP BY ac.id, u.full_name, cs.enrolled_at '
       'ORDER BY cs.enrolled_at DESC',
       substitutionValues: {'student': studentId},
     );
@@ -236,11 +313,19 @@ class DatabaseService {
 
     final classId = classCheck.first[0];
     
+    // Kiểm tra đã tham gia chưa
+    final enrolled = await conn.query(
+      'SELECT id FROM class_students WHERE class_id = @class AND student_id = @student',
+      substitutionValues: {'class': classId, 'student': studentId},
+    );
+    
+    if (enrolled.isNotEmpty) {
+      throw Exception('Bạn đã tham gia lớp này rồi');
+    }
+    
     // Thêm vào lớp
     await conn.query(
-      'INSERT INTO class_students (class_id, student_id) '
-      'VALUES (@class, @student) '
-      'ON CONFLICT (class_id, student_id) DO NOTHING',
+      'INSERT INTO class_students (class_id, student_id) VALUES (@class, @student)',
       substitutionValues: {
         'class': classId,
         'student': studentId,
@@ -417,6 +502,59 @@ class DatabaseService {
       return _rowToMap(row, [
         'session_number', 'session_date', 'session_time',
         'room', 'status', 'checked_at'
+      ]);
+    }).toList();
+  }
+
+  // Lấy thống kê điểm danh của lớp (NEW)
+  static Future<List<Map<String, dynamic>>> getClassAttendanceStats(int classId) async {
+    final conn = await getConnection();
+    
+    final results = await conn.query(
+      'SELECT '
+      'u.full_name, st.student_code, '
+      'COUNT(DISTINCT s.id) as total_sessions, '
+      'COUNT(DISTINCT CASE WHEN a.status = \'present\' THEN a.id END) as attended, '
+      'ROUND(COUNT(DISTINCT CASE WHEN a.status = \'present\' THEN a.id END)::numeric / '
+      'NULLIF(COUNT(DISTINCT s.id), 0) * 100, 1) as attendance_rate '
+      'FROM class_students cs '
+      'JOIN students st ON cs.student_id = st.id '
+      'JOIN users u ON st.user_id = u.id '
+      'CROSS JOIN sessions s '
+      'LEFT JOIN attendances a ON s.id = a.session_id AND a.student_id = cs.student_id '
+      'WHERE cs.class_id = @class AND s.class_id = @class '
+      'GROUP BY u.full_name, st.student_code, cs.student_id '
+      'ORDER BY attendance_rate DESC',
+      substitutionValues: {'class': classId},
+    );
+
+    return results.map((row) {
+      return _rowToMap(row, [
+        'full_name', 'student_code', 'total_sessions', 'attended', 'attendance_rate'
+      ]);
+    }).toList();
+  }
+
+  // Lấy danh sách điểm danh theo buổi (NEW)
+  static Future<List<Map<String, dynamic>>> getSessionAttendances(int sessionId) async {
+    final conn = await getConnection();
+    
+    final results = await conn.query(
+      'SELECT u.full_name, st.student_code, a.status, a.checked_at '
+      'FROM sessions s '
+      'JOIN attendance_classes ac ON s.class_id = ac.id '
+      'JOIN class_students cs ON ac.id = cs.class_id '
+      'JOIN students st ON cs.student_id = st.id '
+      'JOIN users u ON st.user_id = u.id '
+      'LEFT JOIN attendances a ON s.id = a.session_id AND a.student_id = cs.student_id '
+      'WHERE s.id = @session '
+      'ORDER BY u.full_name',
+      substitutionValues: {'session': sessionId},
+    );
+
+    return results.map((row) {
+      return _rowToMap(row, [
+        'full_name', 'student_code', 'status', 'checked_at'
       ]);
     }).toList();
   }

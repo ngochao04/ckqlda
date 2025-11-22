@@ -29,6 +29,12 @@ class _ClassStatsScreenState extends State<ClassStatsScreen> with SingleTickerPr
     _loadStats();
   }
 
+  @override
+  void dispose() {
+    _tabController.dispose();
+    super.dispose();
+  }
+
   Future<void> _loadStats() async {
     setState(() => _isLoading = true);
     try {
@@ -43,6 +49,11 @@ class _ClassStatsScreenState extends State<ClassStatsScreen> with SingleTickerPr
     } catch (e) {
       print('Error loading stats: $e');
       setState(() => _isLoading = false);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Lỗi tải thống kê: ${e.toString()}')),
+        );
+      }
     }
   }
 
@@ -88,7 +99,11 @@ class _ClassStatsScreenState extends State<ClassStatsScreen> with SingleTickerPr
                       Color color;
                       String statusText;
                       
-                      if (status == 'present') {
+                      if (status == null) {
+                        icon = Icons.remove_circle_outline;
+                        color = Colors.grey;
+                        statusText = 'Chưa học';
+                      } else if (status == 'present') {
                         icon = Icons.check_circle;
                         color = Colors.green;
                         statusText = 'Có mặt';
@@ -125,6 +140,24 @@ class _ClassStatsScreenState extends State<ClassStatsScreen> with SingleTickerPr
         SnackBar(content: Text('Lỗi: ${e.toString()}')),
       );
     }
+  }
+
+  // Helper function to safely convert to int
+  int _toInt(dynamic value) {
+    if (value == null) return 0;
+    if (value is int) return value;
+    if (value is BigInt) return value.toInt();
+    if (value is double) return value.toInt();
+    return int.tryParse(value.toString()) ?? 0;
+  }
+
+  // Helper function to safely convert to double
+  double _toDouble(dynamic value) {
+    if (value == null) return 0.0;
+    if (value is double) return value;
+    if (value is int) return value.toDouble();
+    if (value is BigInt) return value.toDouble();
+    return double.tryParse(value.toString()) ?? 0.0;
   }
 
   @override
@@ -166,18 +199,24 @@ class _ClassStatsScreenState extends State<ClassStatsScreen> with SingleTickerPr
       );
     }
 
-    // Tính thống kê tổng quan
+    // Tính thống kê tổng quan với safe casting
     final totalStudents = _studentStats.length;
-    final avgAttendance = _studentStats.isEmpty
-        ? 0.0
-        : _studentStats.map((s) => s['attendance_rate'] as num).reduce((a, b) => a + b) / totalStudents;
     
-    final excellentCount = _studentStats.where((s) => (s['attendance_rate'] as num) >= 80).length;
+    double avgAttendance = 0.0;
+    if (totalStudents > 0) {
+      double sum = 0.0;
+      for (var s in _studentStats) {
+        sum += _toDouble(s['attendance_rate']);
+      }
+      avgAttendance = sum / totalStudents;
+    }
+    
+    final excellentCount = _studentStats.where((s) => _toDouble(s['attendance_rate']) >= 80).length;
     final goodCount = _studentStats.where((s) {
-      final rate = s['attendance_rate'] as num;
+      final rate = _toDouble(s['attendance_rate']);
       return rate >= 50 && rate < 80;
     }).length;
-    final poorCount = _studentStats.where((s) => (s['attendance_rate'] as num) < 50).length;
+    final poorCount = _studentStats.where((s) => _toDouble(s['attendance_rate']) < 50).length;
 
     return Column(
       children: [
@@ -234,7 +273,7 @@ class _ClassStatsScreenState extends State<ClassStatsScreen> with SingleTickerPr
               itemCount: _studentStats.length,
               itemBuilder: (context, index) {
                 final student = _studentStats[index];
-                final rate = student['attendance_rate'] as num;
+                final rate = _toDouble(student['attendance_rate']);
                 
                 Color rateColor;
                 if (rate >= 80) {
@@ -269,7 +308,7 @@ class _ClassStatsScreenState extends State<ClassStatsScreen> with SingleTickerPr
                       crossAxisAlignment: CrossAxisAlignment.end,
                       children: [
                         Text(
-                          '${student['attended']}/${student['total_sessions']}',
+                          '${_toInt(student['attended'])}/${_toInt(student['total_sessions'])}',
                           style: const TextStyle(fontWeight: FontWeight.bold),
                         ),
                         const Text('buổi', style: TextStyle(fontSize: 10, color: Colors.grey)),
@@ -307,16 +346,18 @@ class _ClassStatsScreenState extends State<ClassStatsScreen> with SingleTickerPr
         itemBuilder: (context, index) {
           final session = _sessions[index];
           final date = session['session_date'] as DateTime;
-          final attendances = session['total_attendances'] as int;
+          final attendances = _toInt(session['total_attendances']);
+          final sessionNumber = _toInt(session['session_number']);
+          final isCompleted = session['is_completed'] as bool? ?? false;
 
           return Card(
             margin: const EdgeInsets.only(bottom: 12),
             child: ListTile(
               leading: CircleAvatar(
-                backgroundColor: session['is_completed'] ? Colors.green : Colors.orange,
-                child: Text('${session['session_number']}'),
+                backgroundColor: isCompleted ? Colors.green : Colors.orange,
+                child: Text('$sessionNumber'),
               ),
-              title: Text('Buổi ${session['session_number']}'),
+              title: Text('Buổi $sessionNumber'),
               subtitle: Text(
                 '${date.day}/${date.month}/${date.year} - ${session['session_time']}\n'
                 'Phòng: ${session['room'] ?? 'N/A'}',
@@ -324,7 +365,7 @@ class _ClassStatsScreenState extends State<ClassStatsScreen> with SingleTickerPr
               trailing: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  Icon(Icons.people, color: Colors.blue, size: 20),
+                  const Icon(Icons.people, color: Colors.blue, size: 20),
                   Text(
                     '$attendances',
                     style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
@@ -332,8 +373,8 @@ class _ClassStatsScreenState extends State<ClassStatsScreen> with SingleTickerPr
                 ],
               ),
               onTap: () => _viewSessionDetails(
-                session['id'],
-                session['session_number'],
+                _toInt(session['id']),
+                sessionNumber,
               ),
             ),
           );
